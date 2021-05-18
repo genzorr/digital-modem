@@ -13,9 +13,12 @@ class Modulator:
         self.constellation = settings.constellation
         self.barker_code = settings.barker_code
         self.data = settings.data
-        _, self.rrc = rrcosfilter(N=int(12 * self.fs / self.baud), alpha=0.8, Ts=self.fs / self.baud, Fs=1)
+        self.sps = round(self.fs / self.baud)
+        _, self.rrc = rrcosfilter(N=int(12 * self.sps), alpha=0.35, Ts=self.sps, Fs=1)
+        self.rrc = self.rrc / max(abs(self.rrc))
+        # self.rrc = Filter(b=self.rrc / max(abs(self.rrc)))
 
-    # Convert text to array of ints.
+        # Convert text to array of ints.
     def _str2ints(self, text):
         return [42 if (ord(x) < 32 or ord(x) > 126) else ord(x) for x in text]  # filter unused symbols
 
@@ -37,7 +40,7 @@ class Modulator:
 
     # Increase discretion of data up to frequency fd (in KHz) by adding zeros between points.
     def _increase_discretion(self):
-        num_add = round(self.fs / 1000) - 1
+        num_add = self.sps - 1
         values = np.zeros(num_add)
         increased = np.array([], dtype=complex)
         for i in range(self.data.size):
@@ -56,12 +59,14 @@ class Modulator:
         return self.data
 
     def _add_zeros(self):
-        zeros = np.zeros(int(10*self.fs/self.baud))
+        zeros = np.zeros(round(20*self.sps))
         self.data = np.concatenate((zeros, self.data, zeros))
 
     def _apply_filter(self):
+        # self.data = self.rrc(self.data)
+        # self.data /= np.max(abs(self.data))
         self.data = signal.fftconvolve(self.data, self.rrc, mode='same') # self.rrc[np.newaxis:]
-        self.data /= np.max(self.data) # needed?
+        self.data /= np.max(np.abs(self.data)) # needed?
         # t_rrc = np.arange(len(self.rrc)) / self.fs  # the time points that correspond to the filter values
         # fig, ax = plt.subplots()
         # ax.set_title("Filter")

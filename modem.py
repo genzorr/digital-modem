@@ -14,11 +14,15 @@ if __name__ == '__main__':
 
     settings = lib.Settings(fc=7000, fs=48000)
     modulator = Modulator(settings=settings)
-    modulated_signal = modulator.transmit_data(message, show_src=False, show_filt=False, show_mod=False)
+    modulated_signal = modulator.transmit_data(message, show_src=False, show_filt=True, show_mod=False)
+
+    channel = Channel()
+    signal = channel.send(modulated_signal)
+    # plot_spectrum(signal, 48000, "Channel")
 
     demodulator = Demodulator(settings=settings)
-    demodulator.receive_data(modulated_signal)
-    result = demodulator.process_data(show_demod=False, show_filt=False, show_res=False, show_2d=False)
+    demodulator.receive_data(signal)
+    result = demodulator.process_data(show_demod=True, show_filt=True, show_res=False, show_2d=True)
 
     print("Sent: ", message)
     print("Recv: ", result)

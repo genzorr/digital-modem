@@ -4,6 +4,22 @@ import matplotlib.pyplot as plt
 import scipy.signal as signal
 import scipy.fft as fft
 
+class Filter(object):
+    def __init__(self, b, a = [1], init=[]):
+        self.b = b
+        self.a = a
+        self.clear(init)
+    def __call__(self, x):
+        y, self.state = signal.lfilter(self.b, self.a, x, zi=self.state)
+        return y
+    def clear(self, init=[]):
+        self.state = signal.lfiltic(self.b, self.a, [], init)
+
+def UpSample(msg, SPS):
+	res = []
+	for s in msg:
+		res += [s] + [0] * (SPS-1)
+	return res
 
 class Settings:
     def __init__(self, fc, fs):

@@ -7,23 +7,6 @@ import scipy.signal as signal
 import scipy.integrate as integrate
 from lib import *
 
-class Filter(object):
-    def __init__(self, b, a = [1], init=[]):
-        self.b = b
-        self.a = a
-        self.clear(init)
-    def __call__(self, x):
-        y, self.state = signal.lfilter(self.b, self.a, x, zi=self.state)
-        return y
-    def clear(self, init=[]):
-        self.state = signal.lfiltic(self.b, self.a, [], init)
-
-def UpSample(msg, SPS):
-	res = []
-	for s in msg:
-		res += [s] + [0] * (SPS-1)
-	return res
-
 ''' 
 signal = I * cos(2pi*f_c*t) - Q * sin(2pi*f_c*t)
 '''
@@ -36,7 +19,10 @@ class Demodulator:
         self.constellation = {v: k for k, v in settings.constellation.items()}
         self.barker_code = settings.barker_code
         self.data = settings.data
-        _, self.rrc = rrcosfilter(N=int(12 * self.fs / self.baud), alpha=0.8, Ts=self.fs / self.baud, Fs=1)
+        self.sps = round(self.fs / self.baud)
+        _, self.rrc = rrcosfilter(N=int(12 * self.sps), alpha=0.35, Ts=self.sps, Fs=1)
+        self.rrc = self.rrc / max(abs(self.rrc))
+        # self.rrc = Filter(b=self.rrc / max(abs(self.rrc)))
 
     def receive_data(self, data):
         self.data = data
@@ -45,70 +31,64 @@ class Demodulator:
         carrier = 2 * math.pi * self.fc / self.fs * np.arange(0, len(self.data))
         self.data = self.data * np.exp(-1j*carrier)
 
-        # N = round(self.fs/self.baud)
-        # s = []
-        # l = len(self.data)
-        # for k in range(0, l, N):
-        #     s.append(integrate.simps(self.data[k:k+N]))
-        # self.data = np.array(s)
-
     def _apply_filter(self):
+        # self.data = self.rrc(self.data)
+        # self.data /= np.max(abs(self.data))
         self.data = signal.fftconvolve(self.data, self.rrc, mode='same')
-        self.data /= np.max(self.data) # needed?
-        # t_rrc = np.arange(len(rrc)) / self.fs  # the time points that correspond to the filter values
+        self.data /= np.max(np.abs(self.data))
+        plot_spectrum(self.data, self.fs, "Pre-divided")
+        value = np.argmax(np.abs(self.data))
+        self.data /= self.data[value]
+        # t_rrc = np.arange(len(self.rrc)) / self.fs  # the time points that correspond to the filter values
         # fig, ax = plt.subplots()
         # ax.set_title("Filter")
-        # ax.plot(t_rrc/1e-3, rrc)
+        # ax.plot(t_rrc/1e-3, self.rrc)
 
     def _decrease_discretion(self):
-        N = round(self.fs / self.baud)
+        N = round(self.sps)
         self.data = self.data[0::N]
 
     def _find_barker(self):
         # up barker
-        SPS = round(self.fs / self.baud)
-        Bar = np.array(UpSample(self.barker_code, SPS))
+        Bar = np.array(UpSample(self.barker_code, self.sps))
 
-        plt.figure()
+        fig, ax = plt.subplots()
         samples = range(len(self.data))
-        plt.plot(samples, self.data, label='signal')
+        ax.plot(samples, self.data, label='signal')
 
         # correlation
         autocorr_filt = Filter(a=[1], b=np.array([i for i in reversed(Bar)], dtype='complex'))
         correlation = autocorr_filt(self.data)
-        plt.plot(samples, correlation, label='correlation result')
+        ax.plot(samples, correlation, label='correlation result')
 
         # power
         power = np.array([x * x for x in self.data])
-        plt.plot(samples, power, label='power')
+        ax.plot(samples, power, label='power')
 
         # average power????
-        rect_filt = Filter(a=[1], b=np.ones(len(self.barker_code) * SPS) / (len(self.barker_code) * SPS))
+        rect_filt = Filter(a=[1], b=np.ones(len(self.barker_code) * self.sps) / (len(self.barker_code) * self.sps))
         rect_filt_power = rect_filt(abs(power))
-        plt.plot(samples, np.sqrt(rect_filt_power), label='sqrt(rect_flt(power))')
+        ax.plot(samples, np.sqrt(rect_filt_power), label='sqrt(rect_flt(power))')
 
-        plt.grid()
-        plt.legend()
-        plt.show()
-        plt.close()
+        ax.grid()
+        ax.legend()
 
         index = abs(correlation).argmax()
         if correlation[index] > 3 * np.sqrt(abs(rect_filt_power))[index] * math.sqrt(len(self.barker_code)):
             return index
         else:
             print("Error! Cannot find the begining!")
+            return 0
 
     def _remove_barker(self):
-        # correlator = Filter(a=[1], b=np.flip(self.barker_code))
-        # res = correlator(self.data)
-        # plot_signal(res, "Correlator", "stem")
-        # start = np.argmax(res) + 1
         start = self._find_barker() + 1
         self.data = self.data[start:]
+        # self.data /= np.max(self.data)
 
     def _plot_data_2d(self):
         fig, ax = plt.subplots()
-        ax.scatter(self.data.real, self.data.imag, s=5)
+        for p in self.data:
+            ax.scatter(p.real, p.imag, s=5)
         ax.set_ylabel('Q')
         ax.set_xlabel('I')
         ax.grid(b=True, which='major', color='k', alpha=0.1)
@@ -129,12 +109,13 @@ class Demodulator:
     # Decode points from alphabet {1, -1, j, -j}
     def _decode_point(self, p):
         x, y = p.real, p.imag
-        if (p.real > 0.5): x = 1
-        elif (p.real < -0.5): x = -1
+        border = 0.25
+        if (p.real > border): x = 1
+        elif (p.real < -border): x = -1
         else: x = 0
 
-        if (p.imag > 0.5): y = 1
-        elif (p.imag < -0.5): y = -1
+        if (p.imag > border): y = 1
+        elif (p.imag < -border): y = -1
         else: y = 0
         p = x + 1j*y
         return self.constellation.get(p)
