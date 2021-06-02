@@ -59,16 +59,17 @@ class Demodulator:
         # correlation
         autocorr_filt = Filter(a=[1], b=np.array([i for i in reversed(Bar)], dtype='complex'))
         correlation = autocorr_filt(self.data)
-        ax.plot(samples, correlation, label='correlation result')
+        ax.plot(samples, correlation, label='correlation')
 
         # power
-        power = np.array([x * x for x in self.data])
+        # power = np.array([x * x for x in self.data])
+        power = np.abs(self.data)
         ax.plot(samples, power, label='power')
 
         # average power????
         rect_filt = Filter(a=[1], b=np.ones(len(self.barker_code) * self.sps) / (len(self.barker_code) * self.sps))
         rect_filt_power = rect_filt(abs(power))
-        ax.plot(samples, np.sqrt(rect_filt_power), label='sqrt(rect_flt(power))')
+        ax.plot(samples, np.sqrt(rect_filt_power), label='average power')
 
         ax.grid()
         ax.legend()

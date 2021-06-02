@@ -14,7 +14,7 @@ if __name__ == '__main__':
 
     settings = lib.Settings(fc=7000, fs=48000)
     modulator = Modulator(settings=settings)
-    modulated_signal = modulator.transmit_data(message, show_src=False, show_filt=True, show_mod=False)
+    modulated_signal = modulator.transmit_data(message, show_src=True, show_filt=True, show_mod=True)
 
     channel = Channel()
     signal = channel.send(modulated_signal)
@@ -22,7 +22,7 @@ if __name__ == '__main__':
 
     demodulator = Demodulator(settings=settings)
     demodulator.receive_data(signal)
-    result = demodulator.process_data(show_demod=True, show_filt=True, show_res=False, show_2d=True)
+    result = demodulator.process_data(show_demod=True, show_filt=True, show_res=True, show_2d=True)
 
     print("Sent: ", message)
     print("Recv: ", result)
